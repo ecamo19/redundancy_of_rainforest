@@ -4,6 +4,7 @@
 
 # Session Data files
 .RData
+raw_data
 
 # User-specific files
 .Ruserdata
@@ -21,7 +22,7 @@
 .Rproj.user/
 
 # produced vignettes
-vignettes/*.html
+#vignettes/*.html
 vignettes/*.pdf
 
 # OAuth2 token, see https://github.com/hadley/httr/releases/tag/v0.3
@@ -37,3 +38,4 @@ vignettes/*.pdf
 
 # R Environment Variables
 .Renviron
+.gitignore
