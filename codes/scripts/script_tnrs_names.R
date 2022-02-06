@@ -3,12 +3,11 @@ library(purrr)
 library(dplyr)
 library(readr)
 # For taxonomic names
-# devtools::install_github('https://github.com/EnquistLab/RTNRS')
+#devtools::install_github('https://github.com/EnquistLab/RTNRS')
 library(TNRS)
 
 # Load species list ------------------------------------------------------------
 sys.source("codes/scripts/script_full_species_list.R",envir = knitr::knit_global())
-
 
 # Function for making the call to BIEN database --------------------------------
 
@@ -18,10 +17,8 @@ tnrs_names <- function(genus,sp){
     name <- paste0(str_to_title(genus), " ", sp)
     
     # Make the call to the database
-    return(TNRS(taxonomic_names = name))
+    return(TNRS::TNRS(taxonomic_names = name))
 }
-
-
 
 # Taxonomic Name Resolution Service --------------------------------------------
 
@@ -33,11 +30,19 @@ data_species_full_list_no_morpho <-
     
         # Remove morphospecies
         filter(!(str_detect(especie, "^sp") & (str_length(especie) <= 4))) 
-        
+
+
+# Test single name -------------------------------------------------------------
+ 
+tnrs_names(data_species_full_list_no_morpho[2,]$genero, 
+           data_species_full_list_no_morpho[2,]$especie)    
+
+
 ## Iterate  --------------------------------------------------------------------
 tnrs_names <- map2_dfr(.x = data_species_full_list_no_morpho$genero,
                        .y = data_species_full_list_no_morpho$especie,
                        .f = tnrs_names)
+
 
 # Compare names ----------------------------------------------------------------
 
@@ -56,6 +61,5 @@ tnrs_names <-
 
 
 # Save data --------------------------------------------------------------------
-
 readr::write_csv(tnrs_names, "./raw_data/tnrs_names.csv",col_names = TRUE)
 
