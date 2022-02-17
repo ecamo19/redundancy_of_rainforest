@@ -5,9 +5,6 @@
 
 # Code Archive -----------------------------------------------------------------
 
-
-
-# 
 # # Read .xlsx raw file
 # raw_data_species_names <- 
 #     read_excel(file_name,
@@ -123,7 +120,8 @@ data_species_full_list <-
     
 ## Number of species -----------------------------------------------------------
 
-print(paste0("The total number of species is: ",dim(data_species_full_list)[1]))
+print(paste0("The total number of species (species and morpho-species) is: ",
+             dim(data_species_full_list)[1]))
 
 # Remove files except the one that is useful -----------------------------------
 rm(raw_data_species_list,raw_data_path,file_name)
