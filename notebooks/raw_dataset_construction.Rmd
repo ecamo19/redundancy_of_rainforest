@@ -63,33 +63,66 @@ library(BIOMASS)
 
 ```{r}
 # Load species list that includes morpho species
-sys.source("./codes/scripts/script_full_species_list.R", envir = knitr::knit_global())
+sys.source("./codes/scripts/script_full_species_list.R", 
+           envir = knitr::knit_global())
+
+# Spcode with the first 4 characters from the genus and the first 2 from species
+data_species_full_list <-
+    data_species_full_list %>%
+        # This step is done for when mophospecies is sp get it and if it is sp## 
+        # get that 4 characters
+        mutate(gen4 = str_extract(genero, "^.{4}"),
+                sp3 = if_else(str_length(especie) == 2, str_extract(especie, "^.{2}"),
+                             if_else((str_length(especie) > 2) & (str_length(especie) <= 4) & (str_detect(especie, "^sp")),
+                                     str_extract(especie, "^.{4}"), str_extract(especie, "^.{3}")))
+               ) %>%
+        unite(spcode_4_3, c("gen4","sp3"), sep = "")
 ```
+
+```{r}
+data_names_spcode <- 
+    data_species_full_list %>% 
+        mutate(genero = str_to_title(genero)) %>% 
+    
+        # Create name_submitted column
+        unite(name_submitted, c(genero, especie),sep = " ", remove = F) %>% 
+        
+        # Remove morphospecies
+        filter(!(str_detect(especie, "^sp") & (str_length(especie) <= 4))) %>% 
+        
+        select(-c(genero,especie,familia))
+```
+
 ```{r}
 # Load TNRS species list 
 tnrs_species_list <- read.csv("raw_data/tnrs_names_short.csv", header = T) %>% 
     clean_names()
+```
 
-# Load traits from BIEN
-bien_traits <- read.csv("raw_data/data_from_bien_database_wet_forest.csv", 
-                        header = T) %>% 
-    clean_names()
+```{r}
+# Include spcodes in TNRS file
+tnrs_species_list <- 
+    tnrs_species_list %>% 
+        select(-id) %>% 
+        inner_join(., data_names_spcode, by = "name_submitted") %>% 
+        select(spcode,spcode_4_3, everything())
 ```
 
 # Full species list without morpho-species
 
 __The accepted_species columns were obtained from the TRNS__ 
+
 ```{r}
 species_list <- 
     tnrs_species_list %>% 
-    
         # Species' name manually changed
         mutate(accepted_species = case_when(
             name_submitted == "Billia colombiana" ~ "Putzeysia rosea",
             name_submitted == "Hyeronima oblonga" ~ "Stilaginella oblonga",
             TRUE ~ accepted_species)) %>%  
 
-        select(name_submitted,taxonomic_status,accepted_species) %>% 
+        select(spcode, spcode_4_3, name_submitted, taxonomic_status, 
+               accepted_species) %>% 
         arrange(name_submitted) %>% 
     
         # In this list Brosimum panamense is treat as a different species and is 
@@ -99,10 +132,11 @@ species_list <-
         
         select(-taxonomic_status)
 
+# Total should be 190 rows
 reactable(species_list)
 ```
 
-# Reproductive traits
+# Reproductive traits datasets
 
 ##  Traits from Salgado
 
@@ -217,7 +251,7 @@ data_salgado_traits <-
     
         # Sort columns
         select(sort(current_vars())) %>% 
-        select(accepted_species,name_submitted, 
+        select(spcode, spcode_4_3, accepted_species, name_submitted, 
                genero, especie, everything()) %>% 
         arrange(genero, especie)
 
@@ -229,7 +263,7 @@ data_salgado_traits <-
 
 abbr_change_salagado <- 
     data_salgado_traits %>% 
-        select(-c(genero,especie, source, name_submitted)) %>%   
+        select(-c(spcode, spcode_4_3, genero,especie, source, name_submitted)) %>%   
         unite(dispersal_syndrome, c(2:3), sep = "/")  %>%  
         unite(pollination_syndrome, c(3:4), sep = "/") %>% 
         unite(sexual_system, c(4:5), sep = "/")  %>% 
@@ -256,7 +290,6 @@ reactable(abbr_change_salagado,
 )
 ```
 
-
 ```{r}
 # Species with no traits in Salgado dataset
 species_with_no_traits_58 <- 
@@ -266,7 +299,7 @@ species_with_no_traits_58 <-
     
         # Species with NO traits in Salgado dataset
         anti_join(species_list, . , by = "name_submitted") %>% 
-        select(accepted_species, everything())
+        select(spcode, spcode_4_3, accepted_species, everything())
 ```
 
 ## Traits from Chazdon et al
@@ -323,7 +356,6 @@ raw_chazdon_traits <-
         purrr::pluck(1)  %>% 
         clean_names() 
 ```
-
 
 ```{r}
 data_chazdon_traits <- 
@@ -396,16 +428,18 @@ data_chazdon_traits <-
             
         # Sort columns
         select(sort(current_vars())) %>% 
-        select(accepted_species, name_submitted,
+        select(spcode, spcode_4_3, accepted_species, name_submitted,
                genero, especie, everything()) %>% 
         arrange(genero, especie)
+
+# nrow should be 12
 ```
 
 ```{r}
 # Abbr
 abbr_change_chazdon <- 
     data_chazdon_traits %>% 
-        select(-c(genero,especie, source, name_submitted)) %>% 
+        select(-c(spcode, spcode_4_3, genero,especie, source, name_submitted)) %>% 
         unite(dispersal_syndrome, c(2:3), sep = "/")  %>%  
         unite(pollination_syndrome, c(3:4), sep = "/") %>% 
         unite(sexual_system, c(4:5), sep = "/") %>%
@@ -433,7 +467,6 @@ reactable(abbr_change_chazdon,
   }"),
 )
 ```
-
 
 ```{r}
 # Species with no traits
@@ -510,7 +543,7 @@ data_zamora_traits <-
         
         # Sort columns
         select(sort(current_vars())) %>%  
-        select(accepted_species, name_submitted,
+        select(spcode, spcode_4_3, accepted_species, name_submitted,
                genero, especie, everything(),
                # Remove columns
                -c(info)) %>% 
@@ -525,7 +558,7 @@ data_zamora_traits <-
 # Abbr
 abbr_change_zamora <- 
     data_zamora_traits %>% 
-        select(-c(genero,especie, source, name_submitted)) %>% 
+        select(-c(spcode, spcode_4_3, genero,especie, source, name_submitted)) %>% 
         unite(dispersal_syndrome, c(2:3), sep = "/")  %>% 
         unite(pollination_syndrome, c(3:4), sep = "/")  %>% 
         unite(sexual_system, c(4:5), sep = "/") %>% 
@@ -554,7 +587,6 @@ reactable(abbr_change_zamora,
 )
 ```
 
-
 ```{r}
 # Species with no traits
 species_with_no_traits_13 <- 
@@ -570,7 +602,8 @@ species_with_no_traits_13 <-
 ## Species identified by Orlando Vargas
 
 ```{r cache = TRUE, pdf_conversion_to_data}
-raw_data_vargas <- extract_tables("./raw_data/response_traits/original_raw_data_files/lista_arboles_sindromes_OVR05.pdf", 
+raw_data_vargas <- 
+    extract_tables("./raw_data/response_traits/original_raw_data_files/lista_arboles_sindromes_OVR05.pdf", 
                                    
                                    # Read this pages
                                    pages = c(1:14), 
@@ -605,10 +638,11 @@ data_vargas_traits <-
         # Rename species names that are wrong
         mutate(name = case_when(
             name == "Tabebuia chrysantha??"  ~ "Tabebuia chrysantha",
-            TRUE ~ name))  %>% 
+            TRUE ~ name)) %>% 
         
         # Select the species that I need
-        inner_join(species_with_no_traits_13 ,., by = c("name_submitted" = "name" ))  %>% 
+        inner_join(species_with_no_traits_13 ,., 
+                   by = c("name_submitted" = "name" ))  %>% 
     
         # Rename levels in dispersal columns  
         mutate(
@@ -659,29 +693,31 @@ data_vargas_traits <-
                   TRUE ~ poli_viento))  %>% 
         
         # Create new colums
-        unite(dispersal_syndrome_modified ,6:10, sep = "_") %>%  
-        unite(pollination_syndrome_modified, 7:10, sep = "_") %>%   
+        unite(dispersal_syndrome_modified, 8:12, sep = "_")  %>%  
+        unite(pollination_syndrome_modified, 9:12, sep = "_")  %>%  
     
         # Delete special characters
-        mutate(across(6:ncol(.), str_replace_all, pattern = "__|[*]|[?]",replacement = "")) %>% 
+        mutate(across(8:ncol(.), str_replace_all, 
+                      pattern = "__|[*]|[?]",replacement = "")) %>% 
         
         # Add category dvar for species with more than 1     
         mutate(dispersal_syndrome_modified = case_when(
             str_detect(dispersal_syndrome_modified, "_")  ~ "dvar",
-            TRUE ~ dispersal_syndrome_modified)) %>% 
+            TRUE ~ dispersal_syndrome_modified)) %>%  
         
         # Remove underscore from pins
-         mutate(across(7, str_replace_all, pattern = "_", replacement = "")) %>% 
+         mutate(across(9, str_replace_all, pattern = "_", replacement = "")) %>% 
         
         # Remove columns
         select(-c(familia))  %>% 
     
         # Rename sexual system    
         mutate(sexual_system_modified = case_when(
-            sexual_system == "B"  ~ "ssher")) %>% 
+            sexual_system == "B"  ~ "ssher")) %>%   
         
         add_column(source = "https://sura.ots.ac.cr/florula4/docs/lista_arboles_sindromes_OVR05.pdf")  %>% 
         arrange(genero, especie)
+
 ```
 
 ### Species with no traits
@@ -694,14 +730,15 @@ reactable(anti_join(species_with_no_traits_13,data_vargas_traits , by = "name_su
 # Manual input
 manual_input  <-   
     tribble(
-         ~accepted_species, ~genero, ~especie, ~dispersal_syndrome_modified, ~pollination_syndrome_modified, ~sexual_system_modified, ~source,
-        "Cecropia peltata", "Cecropia", "peltata","dani","dwin","ssdio","http://www.ecofog.gf/img/pdf/bibliographic_synthesis_ruth_tchana_thomas_monjoin_master_2_bioget_cecropia.pdf",
-        "Tabernaemontana alba", "Tabernaemontana","alba","","","","",
-        "Tabernaemontana arborea", "Tabernaemontana","arborea","","","",""
+         ~spcode, ~spcode_4_3, ~accepted_species, ~genero, ~especie, ~dispersal_syndrome_modified, ~pollination_syndrome_modified, ~sexual_system_modified, ~source,
+        "cecrpe", "cecrpel", "Cecropia peltata", "Cecropia", "peltata","dani","dwin","ssdio",
+        "http://www.ecofog.gf/img/pdf/bibliographic_synthesis_ruth_tchana_thomas_monjoin_master_2_bioget_cecropia.pdf",
+        "tabral", "tabealb", "Tabernaemontana alba", "Tabernaemontana","alba","","","","",
+        "pescar","tabearb", "Tabernaemontana arborea", "Tabernaemontana","arborea","","","",""
     )    
 ```
 
-# Wood density
+# Morphospecies
 
 ```{r}
 # Get morpho-species
@@ -712,9 +749,9 @@ morpho_species <-
         filter((str_detect(especie, "^sp") & (str_length(especie) <= 4))) %>% 
         
         # Set first letter to uppercase
-        mutate(genero = str_to_title(genero)) %>%
-
-        select(-c(familia,spcode))  %>% 
+        mutate(genero = str_to_title(genero)) %>% 
+        
+        select(-c(familia))  %>% 
         group_by(genero) %>% 
     
         # Name morpho-species in a sequential manner
@@ -723,8 +760,10 @@ morpho_species <-
         unite("accepted_species", c(genero, especie), sep = " ", remove = F) %>% 
         
         arrange(accepted_species)
+
 ```
 
+# Raw Wood density
 
 ```{r}
 # Join the names from TRNS with the morpho-species
@@ -780,11 +819,21 @@ raw_wood_density <-
         clean_names() %>% 
         arrange(genus, species) %>% 
         unite(accepted_species, c("genus","species"), sep = " ") %>% 
-        select(-family)
+        select(-family) 
+        
+        # Check that morpho species get a wd at the level of genus 
+        # filter((str_detect(accepted_species, pattern = "sp"))) %>% 
+        # arrange(level_wd)
 ```
 
-# Join datasets, create Raw data
+```{r}
+# Raw wood density
+raw_wood_density <- 
+    raw_wood_density %>% 
+        arrange(accepted_species)
+```
 
+# Raw Reproductive traits
 
 ```{r}
 # Raw reproductive traits
@@ -803,7 +852,7 @@ raw_reproductive_traits <-
                        sexual_system)),
          by = c("accepted_species", "dispersal_syndrome_modified",
                      "pollination_syndrome_modified", "sexual_system_modified",
-                     "source")) %>% 
+                     "source","spcode", "spcode_4_3")) %>%   
     
     # Zamora data
     full_join(
@@ -813,53 +862,50 @@ raw_reproductive_traits <-
                       sexual_system)),
         by = c("accepted_species", "dispersal_syndrome_modified",
                "pollination_syndrome_modified", "sexual_system_modified",
-               "source"))  %>% 
+               "source","spcode", "spcode_4_3"))  %>% 
+
         
-        # Vargas data
+    # Vargas data
     full_join(., 
               data_vargas_traits %>% 
                   select(-c(name_submitted, genero, especie, sexual_system)),
               by = c("accepted_species", "dispersal_syndrome_modified",
                      "pollination_syndrome_modified", "sexual_system_modified",
-                     "source"))  %>% 
+                     "source","spcode", "spcode_4_3")) %>% 
                     
     # Add morpho species
+    #  Here column genero is generated
     full_join(.,
               morpho_species %>% 
                   select(-c(genero, especie)),
-              by = "accepted_species")  %>% 
+              by = c("accepted_species","spcode_4_3", "spcode"))  %>% 
     
     # Manual input
-        full_join(., 
-                  manual_input %>% 
-                      select(-c(genero, especie)), 
-                  by = c("accepted_species", "dispersal_syndrome_modified",
-                         "pollination_syndrome_modified", "sexual_system_modified",
-                         "source")) %>% 
+    full_join(., 
+              manual_input %>% 
+                  select(-c(genero, especie)), 
+              by = c("accepted_species", "dispersal_syndrome_modified",
+                     "pollination_syndrome_modified", "sexual_system_modified",
+                     "source", "spcode", "spcode_4_3")) %>% 
         
     # Replace empty values with NA
     mutate_all(na_if, "") %>% 
-    select(-genero)
-
-raw_reproductive_traits <- 
-    raw_reproductive_traits %>% 
-        # Change D-P value
-        mutate(sexual_system_modified = case_when(
-            sexual_system_modified == "D-P" | sexual_system_modified == "H-D" ~ "ssdio",
-            TRUE ~ sexual_system_modified)) %>% 
-        arrange(accepted_species)
+    select(-genero) 
     
 ```
 
 ```{r}
-# Raw wood density
-raw_wood_density <- 
-    raw_wood_density %>% 
-        arrange(accepted_species)
+raw_reproductive_traits <- 
+    raw_reproductive_traits %>% 
+    
+        # Change D-P H-D value 
+        mutate(sexual_system_modified = case_when(
+            sexual_system_modified == "D-P" | sexual_system_modified == "H-D" ~ "ssdio",
+            TRUE ~ sexual_system_modified)) %>% 
+        arrange(accepted_species)   
 ```
 
-
-## Join reproductive traits with Wood density
+# Join reproductive traits data with Wood density data
 
 ```{r}
 reactable(inner_join(raw_reproductive_traits, raw_wood_density, 
@@ -867,6 +913,7 @@ reactable(inner_join(raw_reproductive_traits, raw_wood_density,
           width = "2750",
           height = "750",)
 ```
+
 ## Write full dataset
 ```{r}
 raw_data_complete <- 
@@ -877,10 +924,8 @@ raw_data_complete <-
 ```
 
 ```{r}
-#write.csv(raw_data_complete,"./raw_data/raw_data_complete.csv")
+#write.csv(raw_data_complete,"./data_for_analisys/raw_data_complete_dont_modify.csv")
 ```
-
-
 
 # Other databases
 
@@ -915,6 +960,7 @@ seed_mass_try <-
 
 ```{r}
 # Check BIEN database
+# Load traits from BIEN
 data_biendb <- read.csv("raw_data/data_from_bien_database_wet_forest.csv", 
                         header = T)
 
@@ -925,7 +971,6 @@ seed_mass_bien <-
         arrange(scrubbed_species_binomial) %>%
         separate(scrubbed_species_binomial, c("genus", "species"), sep = " ")   
 ```
-
 
 ```{r}
 anti_join(seed_mass_bien,seed_mass_try,  by= c("species" = "species", 
