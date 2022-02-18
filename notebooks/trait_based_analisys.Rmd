@@ -1,0 +1,284 @@
+---
+title: 'Trait based analysis Redundancy of reproductive and wood density traits'
+author: "Erick Calderon-Morales"
+date: '2022'
+output:
+  prettydoc::html_pretty:
+    highlight: pygments
+    theme: cayman
+    toc: yes
+    number_sections: no
+    toc_depth: 1
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE,comment = "", fig.align = 'center',
+					  fig.width = 11, fig.height = 7)
+```
+
+```{r knitr, include = FALSE}
+
+# Save figures in specific place
+
+knitr::opts_chunk$set(autodep        = TRUE,
+                      cache          = FALSE,
+                      cache.comments = TRUE,
+                      
+                      # Save a pdf_copy?
+                      #dev            = c( "png", "pdf"),
+                      # Include code?
+                      echo           = TRUE,                      
+                      error          = FALSE,
+                      fig.align      = "center",
+                      # Path where figures are going to be store pdf single figures
+                      fig.path       = paste0("./notebooks/figures_trait_based_analisys", "/"),
+                      fig.width      = 11,
+                      fig.height     = 7,
+                      message        = FALSE,
+                      warning        = FALSE)
+```
+
+```{r}
+library(dplyr)
+library(janitor)
+library(tibble)
+library(tidyr)
+```
+
+```{r}
+# Load data
+raw_data_complete <- read.csv("./raw_data/raw_data_complete.csv", header = T)
+```
+
+```{r}
+# Remove columns that are not useful for the analysis
+data_cleaned <-     
+    raw_data_complete %>% 
+        select(-c(level_wd,sd_wd,n_ind_wd, X, source)) %>% 
+        column_to_rownames("accepted_species") %>% 
+        
+        # Rename columns
+        rename(disp_sym = "dispersal_syndrome_modified",
+               poli_sym = "pollination_syndrome_modified",
+               ss_syst = "sexual_system_modified",
+               wd = "mean_wd") %>% 
+        mutate(across(where(is.character), factor))
+        
+        # Transform catergorical traits to factor 
+
+
+```
+
+# Chapter 3: Trait dissimilarity
+
+```{r libaries, message=FALSE, warning=FALSE, cache=FALSE}
+library(FD)
+library(gtools)
+library(gawdis)
+library(NbClust)
+library(gawdis)
+```
+
+```{r}
+# Load trova function
+source(here::here("../../cursos_libros_tutoriales/libros/handbook_of_trait_based_ecology/chapters_code/chapter3/trova.r"))
+```
+
+## 3.3 Calculation of trait dissimilarity
+
+NA
+
+
+## 3.4 Problems with the Gower distance
+
+If we compute the dissimilarity for each trait and them combine these two 
+dissimilarities with a simple average (or even with Euclidean distance, 
+i.e. geometric mean), the resulting dissimilarity will be affected much more by 
+the binary trait than by the quantitative. In other words, the contribution of 
+the binary trait to the overall dissimilarity will be disproportional.
+
+
+## 3.5 Categorical and fuzzy coded traits
+
+```{r}
+data_cleaned_dummy <- 
+    cbind(acm.disjonctif(data_cleaned[1:3]),data_cleaned$wd) %>%
+        clean_names()
+
+# Trait dispersal syndrome
+#rowSums(data_cleaned_dummy[1:4])
+```
+
+## 3.7 Functional groups with students’ traits
+
+```{r}
+par(mfrow = c(2, 2))
+hist(data_cleaned$wd, col = "grey", main = "wood density trait values")
+hist(log(data_cleaned$wd), col = "grey", main = "wood density trait values trait values log")
+hist(dist(data_cleaned$wd), col = "grey", main = "dissimilarities wd")
+hist(dist(log(data_cleaned$wd)), col = "grey", main = "dissimilarities wd log")
+```
+
+
+```{r, distance_matrix, cache = TRUE}
+
+distance_matrix <- gawdis(data_cleaned, 
+                    w.type = "optimized",
+                    opti.maxiter = 300)
+
+distance_matrix <- round(distance_matrix,3)
+```
+
+```{r}
+pcoa_all <- dudi.pco(sqrt(distance_matrix), scannf = F, nf = 10)
+scatter(pcoa_all)
+```
+
+
+
+```{r}
+# We can compute how much of the variability is captured by the first two axes, 
+# which is around 45%.
+sum(pcoa_all$eig[1:2]) / sum(pcoa_all$eig)
+```
+
+```{r}
+cluster <- hclust(distance_matrix, method = "ward.D2")
+```
+
+We can try one of many possible ways to find, statistically, the optimal 
+number of groups in such a cluster (which maximizes the dissimilarity between 
+groups and minimize the dissimilarity within groups). A good function is 
+NbClust which offers a lot of possible approaches:
+
+
+```{r}
+cluster_groups <- NbClust(diss = distance_matrix, distance = NULL, min.nc = 5,
+                      method = "ward.D", index = "silhouette")
+
+```
+
+```{r}
+cluster_groups$Best.nc
+```
+
+```{r fig.height = 15, fig.width = 15}
+library(factoextra)
+library(ggsci)
+fviz_dend(cluster,
+          k = cluster_groups$Best.nc[1],
+          k_colors = "jco",
+          repel = TRUE,
+          horiz = TRUE,
+          type = "circular")
+```
+
+
+
+We can also visualize the groups using s.class, with respect to the PCoA:
+```{r}
+par(mfrow = c(1, 2))
+scatter(pcoa_all)
+s.class(pcoa_all$li, as.factor(cluster_groups$Best.partition), cpoint = 1)
+```
+
+## 3.8 Some real data with the function trova
+
+The function allows to compute species dissimilarity not only using species 
+means, but also considering overlap of trait values between species by using 
+the standard deviation of a give trait.
+
+```{r, eval = FALSE}
+data_cleaned_dummy <- data_cleaned_dummy[, c(1:4,14)]
+list_dummy <- list(data_cleaned_dummy[, 1:4])
+names(list_dummy) <- "disp_symd"
+
+dissims <- trova(species.names = rownames(data_cleaned_dummy), 
+                 # needs mean and sd
+                 gaussian.data = wd,
+                 multiple.category = list_dummy)
+```
+
+## 3.9 The gawdis function
+
+The dissimilarity obtained can be computed in order to attain a quasi-identical 
+contribution of individual variables (e.g. traits) or group of associated 
+variables (on variables reflecting similar information, e.g. multiple leaf traits)
+
+```{r}
+dummy$trait
+```
+
+```{r eval = FALSE}
+equalcont <- gawdis(data_cleaned, 
+                    w.type = "optimized",
+                    opti.maxiter = 300)
+
+equalcont <- round(equalcont,3)
+attr(equalcont, "correls")
+attr(equalcont, "weights")
+
+```
+
+
+## The function gawdis: grouping traits
+
+```{r}
+# load shade house experiment
+load("../../data_test_shadehouse.RData")
+
+traits <- 
+    data_complete %>%
+        unite("group", 1:4, sep = "_") %>% 
+        column_to_rownames("group") %>%  
+        select(8:16,20,21)  
+    
+```
+
+```{r}
+straightgowdis_2 <- gawdis(traits, w.type = "equal", silent = T)
+cors_gow <- attr(straightgowdis_2, "correls")
+```
+
+```{r eval = FALSE}
+gaw_groups <- gawdis(traits, 
+                     w.type = "optimized", 
+                     opti.maxiter = 300,
+                     groups.weight = T, 
+                     groups = c(1, 1, 1, 2, 2, 2, 2, 3, 3, 2))
+```
+```{r eval = FALSE}
+cors_gaw_gr <- attr(gaw_groups, "correls")
+ncol(traits)
+
+cors_gaw_gr[11] <- attr(gaw_groups, "group.correls")[1]
+names(cors_gaw_gr)[11] <- "phys"
+
+cors_gaw_gr[12] <- attr(gaw_groups, "group.correls")[2]
+names(cors_gaw_gr)[12] <- "leaf_traits"
+
+cors_gaw_gr[13] <- attr(gaw_groups, "group.correls")[3]
+names(cors_gaw_gr)[13] <- "isotopes"
+
+```
+# Chapter 4: (Multivariate) species level responses
+
+```{r}
+data_path <- "../../cursos_libros_tutoriales/libros/handbook_of_trait_based_ecology/chapters_code/chapter4/"
+
+```
+
+
+```{r}
+com <- read.delim(file = paste0(data_path,"Site_species.txt"))
+community <- read.csv("")
+```
+
+```{r}
+traits <- read.delim(file = here::here("data", "chapter4", "Species_traits.txt"))
+```
+
+```{r}
+env <- read.delim(here::here("data", "chapter4", "Site_env.txt"))
+```
+
