@@ -76,7 +76,10 @@ data_species_full_list <-
                              if_else((str_length(especie) > 2) & (str_length(especie) <= 4) & (str_detect(especie, "^sp")),
                                      str_extract(especie, "^.{4}"), str_extract(especie, "^.{3}")))
                ) %>%
-        unite(spcode_4_3, c("gen4","sp3"), sep = "")
+        unite(spcode_4_3, c("gen4","sp3"), sep = "") %>% 
+        arrange(spcode)
+
+reactable(data_species_full_list)
 ```
 
 ```{r}
