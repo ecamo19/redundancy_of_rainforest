@@ -1,0 +1,929 @@
+---
+title: 'Functinanl diversity measures'
+author: "Erick Calderon-Morales"
+date: '2022'
+output:
+  prettydoc::html_pretty:
+    highlight: pygments
+    theme: cayman
+    toc: yes
+    number_sections: no
+    toc_depth: 1
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE,comment = "", fig.align = 'center',
+					  fig.width = 11, fig.height = 7)
+```
+
+```{r knitr, include = FALSE}
+
+# Save figures in specific place
+
+knitr::opts_chunk$set(autodep        = TRUE,
+                      cache          = FALSE,
+                      cache.comments = TRUE,
+                      
+                      # Save a pdf_copy?
+                      #dev            = c( "png", "pdf"),
+                      # Include code?
+                      echo           = TRUE,                      
+                      error          = FALSE,
+                      fig.align      = "center",
+                      # Path where figures are going to be store pdf single figures 
+                      fig.path       = paste0("./notebooks/figures_trait_based_analisys", "/"),
+                      fig.width      = 11,
+                      fig.height     = 7,
+                      message        = FALSE,
+                      warning        = FALSE)
+```
+
+
+```{r}
+library(dplyr)
+library(janitor)
+library(tibble)
+library(tidyr)
+```
+
+```{r}
+# Load data
+raw_data_complete <- read.csv("./data_for_analisys/traits_data.csv", header = T)
+```
+
+```{r}
+# Remove columns that are not useful for the analysis
+data_cleaned <-     
+    raw_data_complete %>% 
+        select(-c(level_wd,sd_wd,n_ind_wd, X, source, spcode, spcode, spcode_4_3)) %>% 
+        column_to_rownames("accepted_species") %>% 
+        
+        # Rename columns
+        rename(disp_sym = "dispersal_syndrome_modified",
+               poli_sym = "pollination_syndrome_modified",
+               ss_syst = "sexual_system_modified",
+               wd = "mean_wd") %>% 
+        mutate(across(where(is.character), factor))
+        
+        # Transform catergorical traits to factor 
+
+
+```
+
+# Chapter 3: Trait dissimilarity
+
+```{r libaries, message=FALSE, warning=FALSE, cache=FALSE}
+library(FD)
+library(gtools)
+library(gawdis)
+library(NbClust)
+library(gawdis)
+```
+
+
+```{r}
+# Load trova function
+source(here::here("../../cursos_libros_tutoriales/libros/handbook_of_trait_based_ecology/chapters_code/chapter3/trova.r"))
+```
+
+## 3.3 Calculation of trait dissimilarity
+
+NA
+
+
+## 3.4 Problems with the Gower distance
+
+If we compute the dissimilarity for each trait and them combine these two 
+dissimilarities with a simple average (or even with Euclidean distance, 
+i.e. geometric mean), the resulting dissimilarity will be affected much more by 
+the binary trait than by the quantitative. In other words, the contribution of 
+the binary trait to the overall dissimilarity will be disproportional.
+
+
+## 3.5 Categorical and fuzzy coded traits
+
+```{r}
+data_cleaned_dummy <- 
+    cbind(acm.disjonctif(data_cleaned[1:3]),data_cleaned$wd) %>%
+        clean_names()
+
+# Trait dispersal syndrome
+rowSums(data_cleaned_dummy[1:4])
+```
+
+## 3.7 Functional groups with students’ traits
+
+```{r}
+par(mfrow = c(2, 2))
+hist(data_cleaned$wd, col = "grey", main = "wood density trait values")
+hist(log(data_cleaned$wd), col = "grey", main = "wood density trait values trait values log")
+hist(dist(data_cleaned$wd), col = "grey", main = "dissimilarities wd")
+hist(dist(log(data_cleaned$wd)), col = "grey", main = "dissimilarities wd log")
+```
+
+
+```{r, distance_matrix, cache = TRUE}
+
+distance_matrix <- gawdis(data_cleaned, 
+                    w.type = "optimized",
+                    opti.maxiter = 500)
+
+distance_matrix <- round(distance_matrix,3)
+attr(distance_matrix, "correls")
+attr(distance_matrix, "weights")
+```
+
+```{r}
+pcoa_all <- dudi.pco(sqrt(distance_matrix), scannf = F, nf = 10)
+scatter(pcoa_all)
+```
+
+
+
+```{r}
+# We can compute how much of the variability is captured by the first two axes, 
+# which is around 45%.
+sum(pcoa_all$eig[1:2]) / sum(pcoa_all$eig)
+```
+
+```{r}
+cluster <- hclust(distance_matrix, method = "ward.D2")
+```
+
+We can try one of many possible ways to find, statistically, the optimal 
+number of groups in such a cluster (which maximizes the dissimilarity between 
+groups and minimize the dissimilarity within groups). A good function is 
+NbClust which offers a lot of possible approaches:
+
+
+```{r}
+cluster_groups <- NbClust(diss = distance_matrix, distance = NULL, min.nc = 6,
+                      method = "ward.D", index = "silhouette")
+```
+
+```{r}
+cluster_groups$Best.nc
+```
+
+```{r fig.height = 20, fig.width = 20}
+library(factoextra)
+library(ggsci)
+fviz_dend(cluster,
+          k = cluster_groups$Best.nc[1],
+          k_colors = "jco",
+          repel = TRUE,
+          horiz = TRUE,
+          type = "circular")
+```
+
+
+
+We can also visualize the groups using s.class, with respect to the PCoA:
+```{r}
+par(mfrow = c(1, 2))
+scatter(pcoa_all)
+s.class(pcoa_all$li, as.factor(cluster_groups$Best.partition), cpoint = 1)
+```
+
+## 3.8 Some real data with the function trova
+
+The function allows to compute species dissimilarity not only using species 
+means, but also considering overlap of trait values between species by using 
+the standard deviation of a give trait.
+
+```{r, eval = FALSE}
+data_cleaned_dummy <- data_cleaned_dummy[, c(1:4,14)]
+list_dummy <- list(data_cleaned_dummy[, 1:4])
+names(list_dummy) <- "disp_symd"
+
+dissims <- trova(species.names = rownames(data_cleaned_dummy), 
+                 # needs mean and sd
+                 gaussian.data = wd,
+                 multiple.category = list_dummy)
+```
+
+## 3.9 The gawdis function
+
+The dissimilarity obtained can be computed in order to attain a quasi-identical 
+contribution of individual variables (e.g. traits) or group of associated 
+variables (on variables reflecting similar information, e.g. multiple leaf traits)
+
+```{r}
+dummy$trait
+```
+
+```{r eval = FALSE}
+equalcont <- gawdis(data_cleaned, 
+                    w.type = "optimized",
+                    opti.maxiter = 300)
+```
+
+
+## The function gawdis: grouping traits
+
+```{r}
+# load shade house experiment
+load("../../data_test_shadehouse.RData")
+
+traits <- 
+    data_complete %>%
+        unite("group", 1:4, sep = "_") %>% 
+        column_to_rownames("group") %>%  
+        select(8:16,20,21)  
+    
+```
+
+```{r}
+straightgowdis_2 <- gawdis(traits, w.type = "equal", silent = T)
+cors_gow <- attr(straightgowdis_2, "correls")
+```
+
+```{r eval = FALSE}
+gaw_groups <- gawdis(traits, 
+                     w.type = "optimized", 
+                     opti.maxiter = 300,
+                     groups.weight = T, 
+                     groups = c(1, 1, 1, 2, 2, 2, 2, 3, 3, 2))
+```
+
+```{r eval = FALSE}
+cors_gaw_gr <- attr(gaw_groups, "correls")
+ncol(traits)
+
+cors_gaw_gr[11] <- attr(gaw_groups, "group.correls")[1]
+names(cors_gaw_gr)[11] <- "phys"
+
+cors_gaw_gr[12] <- attr(gaw_groups, "group.correls")[2]
+names(cors_gaw_gr)[12] <- "leaf_traits"
+
+cors_gaw_gr[13] <- attr(gaw_groups, "group.correls")[3]
+names(cors_gaw_gr)[13] <- "isotopes"
+```
+
+# Chapter 4: (Multivariate) species level responses
+
+
+```{r}
+# Packages 
+library(ade4)
+library(MASS)
+library(vegan)
+library(ecodist)
+library(maptools)
+library(rpart)
+library(splines)
+library(gam)
+library(pgirmess)
+library(utils)
+library(combinat)
+library(cluster)
+library(fpc)
+library(clusterSim)
+library(lmtest)
+library(Hmisc)
+library(gplots)
+library(NbClust)
+library(rpart)
+library(rpart.plot)
+library(dismo)
+library(multcomp)
+library(gbm)
+library(raster)
+
+
+#source(here::here("./codes/scripts/script_agb_data_cleaning.R"))
+source(here::here("./codes/scripts/script_abundance_data_cleaning.R"))
+source(here::here("./codes/scripts/script_env_data_cleaning.R"))
+```
+
+```{r}
+data_path <- "../../cursos_libros_tutoriales/libros/handbook_of_trait_based_ecology/chapters_code/chapter4/"
+
+# Additional functions
+source(here::here(data_path,"Inference_modelset.r"))
+source(here::here(data_path,"Inference_compute.r"))
+source(here::here(data_path,"corratio.R"))
+source(here::here(data_path,"calinski.R"))
+source(here::here(data_path,"VarScoreOMI.r"))
+source(here::here(data_path,"doublerda.R"))
+```
+
+
+
+
+
+```{r}
+comm <- read.delim(file = paste0(data_path,"Site_species.txt"))
+my_community <- 
+    data_abundance_new_spcodes %>% 
+    column_to_rownames("parcela")
+
+
+```
+
+```{r}
+traits <- read.delim(file = here::here(data_path,"Species_traits.txt"))
+
+my_traits <- 
+    read.csv("./data_for_analisys/traits_data.csv", header = T) %>% 
+        dplyr::select(3,5:7,9) %>% 
+        column_to_rownames("spcode_4_3") %>% 
+        mutate(across(where(is.character), as.factor))
+    
+```
+
+```{r}
+env <- read.delim(here::here(data_path, "Site_env.txt"))
+
+my_env <- 
+    data_env %>% 
+        column_to_rownames("plot") %>% 
+        dplyr::select(-c(crtm_90_x,crtm_90_y,forest_type))
+    
+```
+
+## “Trait-free” Canonical Correspondance Analysis
+ 
+```{r}
+cca1 <- cca(my_community ~ sand + limo + clay + p_h + acidity +
+                ca + mg + k + p + organic_matter +
+                elev + slope_per + slope_deg +
+                prec + precdriest + preccv + temp + tempmin, data = my_env
+            )
+anova(cca1, by = "terms")
+RsquareAdj(cca1)
+```
+
+```{r}
+plot(cca1, display = c("species", "bp"))
+```
+
+```{r}
+# we might be interested, is the position for each species on the axes of 
+# the CCA ordination space
+head(vegan::scores(cca1, display = "species"))
+```
+```{r}
+
+cca_preccv <- cca(my_community ~ preccv + Condition(sand + limo + clay + p_h + 
+                                                    acidity + ca + mg + k + p + 
+                                                    organic_matter + elev + 
+                                                    slope_per + slope_deg +
+                                                    prec + preccv + temp +
+                                                    tempmin), 
+                data = my_env)
+
+cca_p <- cca(my_community ~ p + Condition(sand + limo + clay + p_h + 
+                                                    acidity + ca + mg + k +  
+                                                    organic_matter + elev + 
+                                                    slope_per + slope_deg +
+                                                    prec + preccv + temp +
+                                                    tempmin), 
+            data = my_env)
+
+cca_organic_matter <- cca(my_community ~ organic_matter + 
+                              Condition(sand + limo + clay + p_h + acidity + 
+                                            ca + mg + k + elev + p + 
+                                            slope_per + slope_deg + 
+                                            prec + preccv + temp + tempmin), 
+            data = my_env)
+```
+
+```{r}
+plot(cca_p, display = c("species", "bp"))
+plot(cca_preccv, display = c("species", "bp"))
+```
+
+## Double Canonical Correspondance Analysis
+
+```{r}
+ca1_book <- dudi.coa(comm, scannf = F)
+dCCA1_book <- dbrda(ca1_book, env, traits, scannf = FALSE)
+
+```
+
+```{r}
+#dummy_traits <-  
+#    cbind(acm.disjonctif(my_traits[1:3]), my_traits$mean_wd) %>%
+#        clean_names()
+
+
+ca1 <- dudi.coa(my_community, scannf = F)
+
+dCCA1 <- dbrda(ca1, my_env, data_effect_traits_cleaned, scannf = FALSE)
+```
+
+```{r}
+sum(dCCA1$eig) / sum(ca1$eig)
+```
+
+```{r}
+dCCA1$eig / sum(dCCA1$eig)
+```
+
+```{r fig.width = 10, fig.width = 10}
+s.arrow(dCCA1$corZ[-1, ], ylim = c(-1.2, 1.2), boxes = FALSE)
+s.arrow(dCCA1$corX[-1, ], add.plot = T, clab = 1.5)
+pointLabel(dCCA1$co, row.names(dCCA1$co), cex = 0.5, col = "blue")
+```
+
+## Functional response groups
+
+```{r}
+# Load effect traits
+source(here::here("./codes/scripts/script_effect_traits_data_cleaning.R"))
+```
+
+
+```{r}
+dist_CCA <- dist(vegan::scores(cca1, display = "species"))
+clust_CCA <- hclust(dist_CCA, method = "ward.D2")
+plot(clust_CCA, cex = 0.6)
+```
+
+```{r}
+groups_CCA <- NbClust(diss = dist_CCA, distance = NULL, min.nc = 3, 
+                      method = "ward.D2", index = "silhouette")
+```
+
+```{r}
+# Load effect traits
+source(here::here("./codes/scripts/script_effect_traits_data_cleaning.R"))
+data_effect_traits_cleaned <-  
+        data_effect_traits %>% 
+        dplyr::select(-c(spcode,accepted_species)) %>% 
+        column_to_rownames("spcode_4_3")
+
+summary(lm(as.matrix(data_effect_traits_cleaned) ~ groups_CCA$Best.partition))
+```
+```{r}
+dist_dCCA <- dist(dCCA1$co)
+clust_dCCA <- hclust(dist_dCCA, method = "ward.D2")
+plot(clust_dCCA, cex = 0.6)
+```
+
+```{r}
+groups_dCCA <- NbClust(diss = dist_dCCA, distance = NULL, min.nc = 2, max.nc = 9, 
+                       method = "ward.D2", index = "silhouette")
+```
+```{r fig.width= 10, fig.height=10}
+clusters <- as.factor(groups_dCCA$Best.partition)
+s.class(dCCA1$co, clusters, col = 1:nlevels(clusters))
+s.arrow(dCCA1$corZ[-1,], add.plot = T, clab = 0.8, boxes = FALSE)
+s.arrow(dCCA1$corX[-1, ], add.plot = T, clab = 1.2)
+```
+
+## RDA and regression trees
+
+```{r}
+rda1 <- rda(my_community ~ ., data = my_env, scale = TRUE)
+plot(rda1, display = c("bp", "sp"))
+```
+
+```{r}
+RsquareAdj(rda1)
+```
+
+
+```{r}
+cumsum(rda1$CCA$eig) / sum(rda1$CCA$eig)
+```
+```{r}
+lm_rda_effect <- lm(vegan::scores(rda1, choices = 1, display = "species") ~ .
+                    , data = data_effect_traits_cleaned)
+summary(lm_rda_effect)
+```
+
+
+## Regression Trees
+
+```{r}
+# Create a data frame that contains both, the response (i.e. species scores from
+# RDA axes 1 and 2) and the traits to model these responses.
+
+scores_rda1 <- vegan::scores(rda1, choices = c(1:12))$species
+
+df_effect <- cbind(scores_rda1, data_effect_traits_cleaned)
+df_response <- cbind(scores_rda1, my_traits)
+
+
+head(df_response)
+```
+```{r}
+rta <- rpart::rpart(RDA2 ~ af_mm2 + afe_mm2mg_1 + cfms_mgg_1 + dm_gcm3_1 + 
+                        n_mgg_1 + p_mgg_1, data = df_effect)
+
+
+rta_response <- rpart::rpart(RDA5 ~ dispersal_syndrome_modified + 
+                        pollination_syndrome_modified + 
+                        sexual_system_modified , data = df_response)
+
+rpart.plot(rta_response)
+```
+
+
+```{r}
+abundance_long <- 
+    my_community %>% 
+        rownames_to_column("plot") %>% 
+        pivot_longer(!plot,names_to = "spcode", values_to = "abundance") %>% 
+        group_by(spcode) %>% 
+        # Relative abundance
+        summarise(abundance = sum(abundance)) %>% 
+        mutate(relative_abundance = abundance/sum(abundance)) 
+    
+```
+
+
+```{r}
+#env_log <- 
+    my_env 
+        rownames_to_column("spcode") %>% 
+        full_join(., abundance_long, by = "spcode") %>%   
+        dplyr::select(spcode, abundance, relative_abundance, everything()) %>%  
+        mutate(across(where(is.numeric), log)) %>% 
+        column_to_rownames("spcode") %>% 
+        dplyr::select(-af_mm2)
+```
+
+```{r}
+treeVegetFull <- rpart(abundance ~ af_mm2 + afe_mm2mg_1 + cfms_mgg_1 + dm_gcm3_1, 
+                       n_mgg_1 + p_mgg_1,data = fitness_log,
+                       control = rpart.control(maxdepth = 5))
+rpart.plot(treeVegetFull)
+```
+
+
+## A “homemade” bagging example
+
+```{r}
+nreps <- 5000
+#Create a matrix to store the predictions of each tree:
+predictions <- matrix(NA, nrow = nrow(fitness_log), ncol = nreps,
+                      dimnames = list(rownames(fitness_log), 
+                                      paste("Tree", 1:nreps, sep = "."))
+)
+```
+
+
+```{r}
+for (i in 1:nreps) { #For each repetition
+    
+    #Observations in training set by means of bootstrap:
+    selected <- sample(1:nrow(fitness_log), replace = TRUE)
+    
+    ##Note: selected has the same number of observation than meadows, but some are
+    # repeated and some do not appear (about 1/3). You can check by
+    # length(unique(selected)) #Approx. 2/3 of the observations
+    OOBAux <- fitness_log[-selected, ]
+    trainingAux <- fitness_log[selected, ]
+    #Lets fit our tree, using trainingAux:
+    
+    treeAux <- rpart(relative_abundance ~ afe_mm2mg_1 + cfms_mgg_1 + dm_gcm3_1 +
+                                n_mgg_1 + p_mgg_1, data = trainingAux,
+                     control = rpart.control(cp = 0.001))
+    #Lets predict for the OOB, and store the predictions in the matrix we created before the lo
+    predictions[-selected, i] <- predict(treeAux, newdata = OOBAux)
+    if (i %% 500 == 0) {
+        cat(paste("All is good! Rep. number", i, "\n"))
+    }
+}
+```
+
+```{r}
+Result <- rowMeans(predictions, na.rm = T)
+```
+
+
+```{r}
+#And let us examine how much they resemble the real observations:
+corBagging <- cor(fitness_log$relative_abundance, Result)
+plot(fitness_log$relative_abundance ~ Result, main = paste("Bagging cor=", round(corBagging, 3)))
+```
+
+```{r}
+MSE <- rep(NA, nreps)
+for (i in 20:nreps) {
+    #Let us start in 20 instead of 1, to be more or less sure that all observations
+    #have been part of the OOB sample at least once
+    averageAux <- rowMeans(predictions[, 1:i], na.rm = T)
+    MSE[i] <- mean((fitness_log$relative_abundance - averageAux) ^ 2)
+}
+plot(20:nreps, MSE[20:nreps],type = "l")
+```
+
+
+
+```{r}
+nProcesses <- 10
+nreps <- 3000
+plot(0, 0, type = "n", xlim = c(0, nreps), ylim = c(0, 1), ylab = "MSE",
+     xlab = "N TREES")
+
+for (k in 1:nProcesses) {
+    predictions <- matrix(NA, nrow = nrow(fitness_log), ncol = nreps,
+                          dimnames = list(rownames(fitness_log),
+                                          paste("A", 1:nreps, sep = ".")))
+    for (i in 1:nreps) {
+        selected <- sample(1:nrow(fitness_log), replace = TRUE)
+        OOBAux <- fitness_log[-selected, ]
+        trainingAux <- fitness_log[selected, ]
+        treeAux <- rpart(relative_abundance ~  afe_mm2mg_1 + cfms_mgg_1 + dm_gcm3_1 +
+                         n_mgg_1 + p_mgg_1, data = trainingAux,
+                         control = rpart.control(cp = 0.001))
+        predictions[-selected, i] <- predict(treeAux, newdata = OOBAux)
+    }
+    MSE <- rep(NA, nreps)
+    for (i in 20:nreps) {
+        averageAux <- rowMeans(predictions[, 1:i], na.rm = T)
+        MSE[i] <- mean((fitness_log$relative_abundance - averageAux) ^ 2)
+    }
+    lines(20:nreps, MSE[20:nreps], col = k)
+}
+```
+
+
+## Boosted regression trees for studying the relationship between traits and abundance
+
+```{r}
+BRT.meadows.LR0.1 <- gbm.step(data = fitness_log,
+                              gbm.x = c(3:7), #columns of predictors
+                              gbm.y = 2, # Column of the response variable
+                              family = "gaussian",
+                              tree.complexity = 1,
+                              learning.rate = 0.1,
+                              bag.fraction = 0.75,
+                              n.trees = 50,
+                              verbose = FALSE)
+
+```
+
+```{r}
+BRT.meadows.LR0.01 <- gbm.step(data = fitness_log,
+                               gbm.x = c(3:7), #columns of predictors
+                               gbm.y = 2, # Column of the response variable
+                               family = "gaussian",
+                               tree.complexity = 1,
+                               learning.rate = 0.01,
+                               bag.fraction = 0.75,
+                               n.trees = 50,
+                               verbose = FALSE)
+```
+
+```{r}
+BRT.meadows.LR0.001 <- gbm.step(data = fitness_log,
+                                gbm.x = c(3:7), #columns of predictors
+                                gbm.y = 2, # Column of the response variable
+                                family = "gaussian",
+                                tree.complexity = 1,
+                                learning.rate = 0.001,
+                                bag.fraction = 0.75,
+                                n.trees = 50,
+                                verbose = FALSE)
+```
+
+```{r}
+predicted <- predict(BRT.meadows.LR0.001, n.trees = BRT.meadows.LR0.001$n.trees)
+observed <- fitness_log$abundance
+plot(predicted ~ observed)
+abline(0, 1, col = 2)
+```
+
+```{r}
+R2BRT.meadows <- 1 - (BRT.meadows.LR0.001$self.statistics$mean.resid / 
+                          BRT.meadows.LR0.001$self.statistics$mean.null)
+R2BRT.meadows
+```
+
+```{r}
+summary(BRT.meadows.LR0.001)
+```
+```{r}
+gbm.interactions(BRT.meadows.LR0.001)$rank.list
+```
+
+
+Traits do not predict relative abundance
+
+# Chapter 5
+
+```{r}
+library(FD)
+library(psych)
+library(tidyr)
+library(dplyr)
+```
+
+```{r}
+#source(here::here("./codes/scripts/script_agb_data_cleaning.R"))
+source(here::here("./codes/scripts/script_abundance_data_cleaning.R"))
+source(here::here("./codes/scripts/script_env_data_cleaning.R"))
+```
+
+```{r}
+my_traits_response <- 
+    read.csv("./data_for_analisys/response_traits.csv", header = T) %>% 
+        dplyr::select(3,5:7,9) %>% 
+        column_to_rownames("spcode_4_3") %>% 
+        mutate(across(where(is.character), as.factor))
+```
+
+
+```{r}
+# Load effect traits
+source(here::here("./codes/scripts/script_effect_traits_data_cleaning.R"))
+my_traits_effect <-  
+        data_effect_traits %>% 
+        dplyr::select(-c(spcode,accepted_species)) %>% 
+        column_to_rownames("spcode_4_3")
+
+```
+
+```{r}
+my_community <- 
+    data_abundance_new_spcodes %>% 
+    pivot_longer(!parcela,names_to = "spcode", values_to = "abundance") %>% 
+    pivot_wider(names_from = parcela, values_from = abundance)    %>% 
+    column_to_rownames("spcode")
+```
+
+
+
+```{r}
+my_community_relative_abun <- 
+    my_community %>% 
+        rownames_to_column("spcode") %>% 
+        pivot_longer(!spcode,names_to = "parcela", values_to = "abundance") %>% 
+        mutate(across(where(is.character), as.factor)) %>% 
+        group_by(parcela,spcode) %>% 
+        tally(abundance) %>% 
+        mutate(relative_abund = round(n/(sum(n)),15)) %>%  
+        arrange(parcela)  %>% 
+        select(-n)  %>% 
+        pivot_wider(names_from = parcela, values_from = relative_abund) %>% 
+        column_to_rownames("spcode")
+```
+
+
+
+```{r}
+Bodysize <- c(10, 20, 30, 40, 50, NA, 70)
+Carnivory <- c(1, 1, 0, 1, 0, 1, 0)
+spxtraits.matrix <- cbind(Bodysize, Carnivory)
+rownames(spxtraits.matrix) <- paste("species", 1:7)
+spxtraits.matrix
+```
+```{r}
+comm1 <- c(10, 10, 10, 10, 10, 0, 0)
+comm2 <- c(49, 0, 5, 0, 5, 0, 11)
+comm3 <- c(0, 6, 0, 4, 0, 2, 8)
+spxcom.matrix <- cbind(comm1, comm2, comm3)
+rownames(spxcom.matrix) <- paste("species", 1:7)
+spxcom.matrix
+```
+
+
+```{r}
+# Test 1
+sp.rel.abb <- t(spxcom.matrix) / colSums(spxcom.matrix)
+colSums(t(sp.rel.abb))
+```
+
+
+```{r}
+# Test 2
+sp.rel.abb2 <- round(t(my_community) / colSums(my_community),15)
+colSums(t(sp.rel.abb2))
+```
+
+
+```{r}
+# Test 3
+sp.rel.abb3 <- my_community_relative_abun
+colSums(sp.rel.abb3)
+
+```
+
+```{r}
+t(sp.rel.abb) * spxtraits.matrix[, "Carnivory"]
+colSums(t(sp.rel.abb) * spxtraits.matrix[, "Carnivory"])
+```
+
+```{r}
+t(sp.rel.abb2) * my_traits_effect[, "afe_mm2mg_1"]
+round(colSums(t(sp.rel.abb2) * my_traits_effect[, "afe_mm2mg_1"]),3)
+```
+
+
+```{r}
+t(sp.rel.abb3) * my_traits_effect[, "afe_mm2mg_1"]
+round(colSums(sp.rel.abb3 * my_traits_effect[, "afe_mm2mg_1"]),3)
+```
+
+## FD
+
+```{r}
+rownames(spxtraits.matrix) == rownames(spxcom.matrix)
+functcomp(spxtraits.matrix, t(spxcom.matrix),CWM.type = "all")
+```
+
+
+```{r}
+rownames(my_traits_effect) == rownames(my_community)
+functcomp(my_traits_effect, t(my_community),CWM.type = "all")
+```
+
+## Calculation of CWM with real data
+
+```{r}
+my_traits_effect
+my_traits_response
+```
+
+```{r}
+rownames(my_community) == rownames(my_traits_effect)
+rownames(my_community) == rownames(my_traits_response)
+rownames(my_traits_effect) == rownames(my_traits_response)
+```
+```{r}
+par(mfrow = c(1, 2))
+par(mar = c(2, 4, 2, 0.5))
+hist(my_traits_effect$afe_mm2mg_1 , main = "SLA", xlab = "")
+hist(log(my_traits_effect$afe_mm2mg_1), main = "log(SLA)", xlab = "")
+```
+```{r}
+par(mfrow = c(1, 2))
+par(mar = c(2, 4, 2, 0.5))
+hist(my_traits_effect$cfms_mgg_1 , main = "SLA", xlab = "")
+hist(log(my_traits_effect$cfms_mgg_1), main = "log(SLA)", xlab = "")
+```
+```{r}
+par(mfrow = c(1, 2))
+par(mar = c(2, 4, 2, 0.5))
+hist(my_traits_effect$dm_gcm3_1 , main = "SLA", xlab = "")
+hist(log(my_traits_effect$dm_gcm3_1), main = "log(SLA)", xlab = "")
+```
+
+```{r}
+par(mfrow = c(1, 2))
+par(mar = c(2, 4, 2, 0.5))
+hist(my_traits_effect$n_mgg_1 , main = "SLA", xlab = "")
+hist(log(my_traits_effect$n_mgg_1), main = "log(SLA)", xlab = "")
+```
+'
+
+```{r}
+par(mfrow = c(1, 2))
+par(mar = c(2, 4, 2, 0.5))
+hist(my_traits_effect$p_mgg_1 , main = "SLA", xlab = "")
+hist(log(my_traits_effect$p_mgg_1), main = "log(SLA)", xlab = "")
+```
+
+
+```{r}
+resCWM <- functcomp(my_traits_effect, log(t(my_community) + 1), CWM.type = "all")
+```
+```{r}
+par(mfrow = c(2, 2))
+par(mar = c(3, 4, 2, 1))
+plot(data_env$elev, resCWM$cfms_mgg_1, xlab = "moisture index",
+ylab = "CWM SLA [log mm2/mg]", pch = 20)
+plot(data_env$elev, resCWM$dm_gcm3_1, xlab = "moisture index",
+ylab = "% of Shrubs", pch = 20)
+plot(data_env$elev, resCWM$afe_mm2mg_1, xlab = "moisture index",
+ylab = "% of Legumes", pch = 20)
+plot(data_env$elev, resCWM$p_mgg_1, xlab = "moisture index",
+ylab = "% of Therophytes", pch = 20)
+```
+
+
+```{r}
+summary(lm(resCWM$afe_mm2mg_1 ~ elev*ca, data = data_env ))
+```
+```{r}
+
+row.names(my_env) == row.names(resCWM)
+my_env <- 
+    data_env %>% 
+    column_to_rownames("plot") %>% 
+    select(-forest_type)
+library(vegan)
+rdaNEspain.all <- rda(resCWM ~ elev, data = data_env)
+ # it is already loaded when you use the package 'FD'
+rdaNEspain.all <- rda(resCWM ~ moisture.index * grazing, data = envxp)
+plot(rdaNEspain.all, type = "n", scaling = "sites")
+text(rdaNEspain.all, dis = "cn", scaling = "sites")
+text(rdaNEspain.all, dis = "sp", scaling = "sites", col = "red")
+```
+
+
+```{r}
+rdaNEspain0 <- rda(resCWM ~ 1, data = my_env)
+rdaNEspain.all <- rda(resCWM ~ ca * elev, data = my_env)
+ordistep(rdaNEspain0, scope = formula (rdaNEspain.all), direction = 'forward')
+```
+
+```{r}
+RsquareAdj (rdaNEspain.all)$adj.r.square
+```
+

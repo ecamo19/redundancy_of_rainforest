@@ -1,0 +1,210 @@
+---
+title: 'CWM'
+author: "Erick Calderon-Morales"
+date: '2022'
+output:
+  prettydoc::html_pretty:
+    highlight: pygments
+    theme: cayman
+    toc: yes
+    number_sections: no
+    toc_depth: 1
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE,comment = "", fig.align = 'center',
+					  fig.width = 11, fig.height = 7)
+```
+
+```{r knitr, include = FALSE}
+
+# Save figures in specific place
+
+knitr::opts_chunk$set(autodep        = TRUE,
+                      cache          = FALSE,
+                      cache.comments = TRUE,
+                      
+                      # Save a pdf_copy?
+                      #dev            = c( "png", "pdf"),
+                      # Include code?
+                      echo           = TRUE,                      
+                      error          = FALSE,
+                      fig.align      = "center",
+                      # Path where figures are going to be store pdf single figures 
+                      fig.path       = paste0("./notebooks/figures_cwm", "/"),
+                      fig.width      = 11,
+                      fig.height     = 7,
+                      message        = FALSE,
+                      warning        = FALSE)
+```
+
+
+
+```{r}
+library(FD)
+library(psych)
+library(tidyr)
+library(dplyr)
+library(picante)
+library(gawdis)
+```
+
+```{r}
+#source(here::here("./codes/scripts/script_agb_data_cleaning.R"))
+source(here::here("./codes/scripts/script_abundance_data_cleaning.R"))
+source(here::here("./codes/scripts/script_env_data_cleaning.R"))
+```
+
+
+```{r}
+# Load effect traits
+source(here::here("./codes/scripts/script_effect_traits_data_cleaning.R"))
+
+traits_effect <-  
+        data_effect_traits %>% 
+        dplyr::select(-c(spcode,accepted_species)) 
+        #arrange(spcode_4_3)  
+        #column_to_rownames("spcode_4_3")
+
+```
+
+```{r}
+traits_response <- 
+    read.csv("./data_for_analisys/response_traits.csv", header = T) %>% 
+        
+        dplyr::select(3,5:7,9) %>% 
+        #column_to_rownames("spcode_4_3") %>% 
+        mutate(across(where(is.character), as.factor))
+    
+```
+
+
+```{r}
+traits <- 
+    inner_join(traits_effect, traits_response, by = "spcode_4_3") %>% 
+        select(-c(af_mm2, afe_mm2mg_1,n_mgg_1, dm_gcm3_1,cfms_mgg_1))  %>% 
+        column_to_rownames("spcode_4_3")
+```
+
+
+
+```{r}
+community <- 
+    data_abundance_new_spcodes %>% 
+    pivot_longer(!parcela,names_to = "spcode", values_to = "abundance") %>% 
+    pivot_wider(names_from = parcela, values_from = abundance) %>% 
+    arrange(spcode) %>% 
+    column_to_rownames("spcode")
+```
+
+```{r}
+env <- 
+    data_env %>% 
+        column_to_rownames("plot") %>% 
+        select(-forest_type)
+```
+
+```{r}
+env_cor <- cor(env)
+env_cor[,"elev"]
+
+```
+
+```{r}
+
+```
+
+
+# The MAJORITY of species in low-elevation habitats have given traits
+```{r}
+
+```
+
+
+
+# Functional diversity
+```{r}
+dim(traits_effect)
+dim(community)
+
+#fd_effect <- dbFD(traits_effect, t(community), CWM.type = "all")
+```
+
+
+```{r}
+dist_traits_response <- gawdis(traits, 
+                    w.type = "optimized",
+                    opti.maxiter = 400)
+```
+
+
+```{r}
+#w <- c(0.3167144,0.3496200,0.3336655)
+fd_response <- dbFD(dist_traits_response, t(community),corr = "cailliez")
+
+```
+
+
+```{r}
+indices <- cbind(fd_response$nbsp, fd_response$FRic, fd_response$FEve, 
+                 fd_response$FDiv, fd_response$FDis, fd_response$RaoQ)
+colnames(indices) <- c("NumbSpecies", "FRic", "FEve", "FDiv", "FDis", "Rao")
+pairs(indices, pch = 20)
+```
+
+```{r}
+par(mfrow = c(2, 2)) #this is just to prepare the space
+par(mar = c(4, 4, 2, 1)) # margin of the plots, just to
+
+plot(env$elev, fd_response$nbsp, xlab = "moisture",
+     ylab = "Number of species", pch = 20)
+
+plot(env$elev, fd_response$FRic, xlab = "moisture",
+     ylab = "Functional Richness", pch = 20)
+
+plot(env$elev, fd_response$FEve, xlab = "moisture", 
+        ylab = "Functional Evenness", pch = 20)
+
+plot(env$elev, fd_response$RaoQ, xlab = "moisture",
+     ylab = "Functional Dispersion", pch = 20)
+```
+
+```{r}
+summary(lm(fd_response$FEve ~ preccv , data = env))
+```
+
+```{r}
+source(here::here("../../cursos_libros_tutoriales/libros/handbook_of_trait_based_ecology/chapters_code/chapter5/Rao.r"))
+```
+
+```{r}
+test <- Rao(log(community + 1), dist_traits_response, dphyl = NULL, 
+            weight = F, Jost = T, structure = NULL)
+```
+
+```{r}
+test$TD$Beta_prop
+```
+
+
+We can see in this figure that, despite the great turnover in species composition 
+(beta TD, grey colour, left stack) we have a real low functional turnover. In 
+other words most of the trait dissimilarity between species is found within a 
+plot and not across plots, even if there are such a marked environmental changes 
+and even if species composition changes are very strong (high beta TD)
+
+```{r}
+TD.NEspain.prop <- c(100 * test$TD$Mean_Alpha / test$TD$Gamma, test$TD$Beta_prop)
+
+FD.NEspain.prop <- c(100* test$FD$Mean_Alpha/test$FD$Gamma, test$FD$Beta_prop)
+
+barplot(cbind(TD.NEspain.prop, FD.NEspain.prop), beside = F, col = c(8, 0),
+ylim = c(0, 100), ylab = c("Proportion of Alpha and Beta in Equivalent numbers"))
+text(0.7, 60, "beta")
+text(0.7, 15, "alpha")
+```
+
+```{r}
+
+```
+
