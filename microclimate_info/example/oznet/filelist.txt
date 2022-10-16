@@ -1,0 +1,49 @@
+ Volume in drive C has no label.
+ Volume Serial Number is 248C-9EF0
+
+ Directory of C:\Users\Jamos\Dropbox\My Manuscripts\Plague Locust\Soil moisture data\oznet
+
+09/06/2014  01:09 PM    <DIR>          .
+09/06/2014  01:09 PM    <DIR>          ..
+16/10/2011  07:48 PM        18,363,866 a1_30min_sm.txt
+16/10/2011  07:48 PM        18,358,810 a2_30min_sm.txt
+16/10/2011  07:53 PM        19,796,265 a3_30min_sm.txt
+16/10/2011  07:49 PM        18,353,529 a4_30min_sm.txt
+16/10/2011  07:50 PM        17,376,721 a5_30min_sm.txt
+09/06/2014  01:09 PM                 0 filelist.txt
+29/10/2011  02:25 PM        14,566,888 k10_20min_sm.txt
+26/03/2010  11:59 AM        12,291,830 k11_20min_sm.txt
+26/03/2010  11:58 AM        14,395,716 k11_6min_rain.txt
+29/10/2011  03:58 PM        14,732,056 k12_20min_sm.txt
+29/10/2011  03:59 PM        14,673,448 k13_20min_sm.txt
+29/10/2011  04:01 PM        14,726,506 k14_20min_sm.txt
+16/10/2011  07:51 PM        18,397,341 k1_30min_sm.txt
+16/10/2011  07:51 PM        17,909,904 k2_30min_sm.txt
+16/10/2011  07:51 PM        18,395,784 k3_30min_sm.txt
+16/10/2011  07:52 PM        18,400,934 k4_30min_sm.txt
+16/10/2011  07:52 PM        17,920,574 k5_30min_sm.txt
+29/10/2011  02:07 PM        14,732,055 k6_20min_sm.txt
+29/10/2011  02:08 PM        14,732,055 k7_20min_sm.txt
+29/10/2011  02:23 PM        14,732,055 k8_20min_sm.txt
+16/10/2011  07:52 PM        18,733,679 m1_30min_sm.txt
+16/10/2011  07:52 PM        18,733,681 m2_30min_sm.txt
+16/10/2011  07:53 PM        18,719,667 m3_30min_sm.txt
+16/10/2011  07:54 PM        18,723,126 m4_30min_sm.txt
+16/10/2011  07:54 PM        18,174,010 m5_30min_sm.txt
+16/10/2011  07:54 PM        18,659,754 m6_30min_sm.txt
+16/10/2011  07:54 PM        18,654,483 m7_30min_sm.txt
+29/10/2011  04:11 PM        14,385,734 y10_20min_sm.txt
+29/10/2011  04:12 PM        14,391,062 y11_20min_sm.txt
+29/10/2011  04:13 PM        14,540,246 y12_20min_sm.txt
+29/10/2011  04:14 PM        14,540,246 y13_20min_sm.txt
+29/10/2011  04:02 PM        14,454,923 y1_20min_sm.txt
+29/10/2011  04:03 PM        14,348,363 y2_20min_sm.txt
+16/10/2011  07:55 PM        18,654,495 y3_30min_sm.txt
+29/10/2011  04:04 PM        14,486,891 y4_20min_sm.txt
+29/10/2011  04:06 PM        14,550,901 y5_20min_sm.txt
+29/10/2011  04:07 PM        14,486,965 y6_20min_sm.txt
+29/10/2011  04:08 PM        14,508,277 y7_20min_sm.txt
+29/10/2011  04:09 PM        14,540,245 y8_20min_sm.txt
+29/10/2011  04:10 PM        14,502,949 y9_20min_sm.txt
+              40 File(s)    635,646,034 bytes
+               2 Dir(s)  21,014,474,752 bytes free

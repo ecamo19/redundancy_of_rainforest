@@ -1,0 +1,235 @@
+---
+title: "Appendix_S2_Australia_Soil_Test"
+author: "Michael Kearney"
+date: "13 September 2019"
+output: pdf_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Overview
+
+This code runs simulations comparing the ability of the micro_ncep (NCEP weather grids) and micro_aust (AWAP weather grids) functions of NicheMapR to predict soil temperature and moisture as compared with the OzNet soil moisture data (Smith et al. 2012) http://www.oznet.org.au/.
+
+Note that this script uses the opendap connection to the AWAP data in the micro_aust call which doesn't incorporate daily wind grids, but in the original analyses for the MS it used a database that included the McVicar daily wind speed grids to be comparable with Kearney and Maino (2018). Thus the results from this analysis will be slightly different to those reported in the MS.
+
+It assumes the following files are in the working directory:
+
+addTrans.R (transparent series in plots)
+plot_moist.R (plotting and analysing observed and predicted soil moisture)
+plot_temp.R (plotting and analysing observed and predicted soil temperature) 
+compare.R (collating and comparing data across all sites)
+soilprops.txt (pre-extracted Soil and Landscape Grid of Australia soil properties for each site)
+
+and that there is a subfolder 'oznet' with the collated OzNet soil data per site as well as a folder 'output' for the results to go in.
+
+## Loop through sites and compute
+
+```{r, eval=TRUE}
+library(NicheMapR)
+library(microclima)
+library(stringr)
+library(raster)
+library(zoo)
+source("addTrans.R") # function to make transparent plots
+source("plot_moist.R") # function to summarise and plot results and generate summary statistics
+source("plot_temp.R") # function to summarise and plot results and generate summary statistics
+
+sitedata<-read.csv("oznetsiteinfo2.csv", stringsAsFactors = FALSE)[,-1]
+# delete sites with no soil moisture data
+nomoist <- c("k14", "a2", "m3")
+sitedata <- subset(sitedata, !name%in%nomoist)
+allsitenames <- as.character(sitedata$name)
+REFL <- 0.2
+runaust <- 1
+runncep <- 1
+tzone <- paste("Etc/GMT+", 10, sep = "")
+
+# pre-extracted SCAN soil properties
+soilpro_all <- read.csv("soilprops.txt", header=FALSE)
+colnames(soilpro_all) <- c('i', 'site', 'long', 'lat', 'desc', 'blkdens', 'clay', 'silt', 'sand')
+
+for(isite in 1:nrow(sitedata)){ # start loop through all sites
+
+  site <- sitedata[isite, ]
+  site2do <- site$name
+  OzNetsite <- site[3]
+  # set soil depths for prediction
+  SMDEP <- as.vector(site[, 9:18])  # 10 depths (cm) for moisture
+  TDEP  <- as.vector(site[, 19:28]) # 10 depths (cm) for temperature
+  eval(parse(text=paste('obs_depth_soil <- c(', site[7],')', sep='')))
+  eval(parse(text=paste('obs_depth_temp <- c(',site[8],')', sep='')))
+  oznetdatafreq <- site$min # frequency of measurement (usually 6min, 20min, or 30min)
+  longlat <- c(as.numeric(site[1]), as.numeric(site[2]))
+
+  ystart <- 2007
+  yfinish <- 2010
+  nyears <- yfinish - ystart + 1
+
+  # soil moisture simulation
+  DEP <- as.numeric(SMDEP)
+
+  #Set soil properties.
+
+  #pre-extracted soil properties
+  soilpro <- subset(soilpro_all, site == isite)
+  soilpro <- soilpro[, 5:9]
+  soilpro[, 1] <- c(2.5, 7.5, 22.5, 45, 80, 150)
+  colnames(soilpro)[1] <- 'depth'
+
+  # get hydraulic properties - uses Cosby et al. 1984 pedotransfer functions and splines soil composition and bulk density to the 19 nodes.
+  soil.hydro<-pedotransfer(soilpro = as.data.frame(soilpro), DEP = DEP)
+  PE <- soil.hydro$PE
+  BB <- soil.hydro$BB
+  BD <- soil.hydro$BD
+  KS <- soil.hydro$KS
+  DD <- rep(2.6, 19)
+  # loam on top
+  PE[1:7] <- CampNormTbl9_1[4, 4]
+  BB[1:7] <- CampNormTbl9_1[4, 5]
+  KS[1:7] <- CampNormTbl9_1[4, 6]
+  BulkDensity <- BD[seq(1, 19, 2)] #soil bulk density, kg/m3
+
+  # search through observed textures and find the nearest match to Campbell and Norman's Table 9.1
+  stypes<-NULL
+  for(m in 1:nrow(soilpro)){
+    ssq <- (CampNormTbl9_1[, 2] - soilpro[m, 4] / 100) ^ 2 + (CampNormTbl9_1[, 3] - soilpro[m, 3] / 100) ^ 2
+    stypes[m] <- which(ssq == min(ssq))
+  }
+  # produce a table of the qualitative soil profile
+  soils <- as.character(CampNormTbl9_1[, 1])
+  profile <- as.data.frame(cbind(soilpro[, 1], soils[stypes]), stringsAsFactors=FALSE)
+  profile[,1] <- as.numeric(profile[,1])
+  colnames(profile) <- c("depth", "soiltype")
+
+  ERR <- 3
+
+  #Run the microclimate model, retrieve output and append dates.
+  if(runaust == 1){
+    #micro.aust <- micro_aust(opendap = 0, REFL = REFL, ERR = ERR, loc = longlat, ystart = ystart, yfinish = yfinish, PE = PE, BB = BB, BD = BD, KS = KS, DD = DD, BulkDensity = BulkDensity, runshade = 0, DEP = DEP, spatial = "w:/")
+    micro.aust <- micro_aust(opendap = 1, REFL = REFL, ERR = ERR, loc = longlat, ystart = ystart, yfinish = yfinish, PE = PE, BB = BB, BD = BD, KS = KS, DD = DD, BulkDensity = BulkDensity, runshade = 0, DEP = DEP, spatial = NA)
+  }
+  dstart <- paste0("01/01/", ystart)
+  dfinish <- paste0("31/12/", yfinish)
+  if(runncep == 1){
+    dem <- microclima::get_dem(lat = longlat[2], long = longlat[1], resolution = 30) # mercator equal area projection
+   #micro.ncep <- micro_ncep(runshade = 1, REFL = REFL, soilgrids = 0, dem = dem, dem2 = dem, spatial = "c:/Spatial_Data/ncep/",  ERR = ERR, loc = longlat, dstart = dstart, dfinish = dfinish, PE = PE, BB = BB, BD = BD, KS = KS, DD = DD, BulkDensity = BulkDensity, DEP = DEP,  slope = 0, aspect = 0)
+   micro.ncep <- micro_ncep(runshade = 1, REFL = REFL, soilgrids = 0, dem = dem, dem2 = dem, spatial = NA, ERR = ERR, loc = longlat, dstart = dstart, dfinish = dfinish, PE = PE, BB = BB, BD = BD, KS = KS, DD = DD, BulkDensity = BulkDensity, DEP = DEP,  slope = 0, aspect = 0)
+  }
+
+  #Read in OzNet data.
+  XLdat <- read.table(paste("oznet/", OzNetsite, '_',oznetdatafreq, 'min_sm.txt', sep=""), header = FALSE, skip = 2, stringsAsFactors = FALSE)
+  rownames(XLdat) <- NULL
+  if(ncol(XLdat) == 9){
+    colnames(XLdat)  <-c('DATE', 'TIME', 'Temp_2.5cm', 'Temp_15cm', 'SM_0_5cm', 'SM_0_30cm', 'SM_30_60cm', 'SM_60_90cm', 'Rainfall')
+  }else if(ncol(XLdat) == 15){colnames(XLdat) <- c('DATE', 'TIME', 'Temp_4cm', 'Temp_15cm','Temp_45cm','Temp_62.5cm', 'SM_0_5cm', 'SM_0_30cm', 'SM_30_60cm', 'SM_57_87cm','suction4cm','suction15cm','suction45cm','suction63cm', 'Rainfall')
+  }else{ warning("OzNet data has wrong number of columns!")
+  }
+  XLdat$DATE <- as.Date(XLdat$DATE, "%d/%m/%Y")
+
+  # take only hourly data (data in 20min intervals)
+  XLdat <- XLdat[seq(1, nrow(XLdat), 60 / oznetdatafreq), ]
+  XLdat0 <- subset(XLdat,  DATE > as.Date(paste('01/01/', ystart, sep = ""), "%d/%m/%Y"))
+  XLdat0 <- subset(XLdat0, DATE < as.Date(paste('01/01/', yfinish + 1, sep = ""), "%d/%m/%Y"))
+  years <- as.character(seq(ystart + 1, yfinish))
+
+  # subset observation data to years with observations
+  XLdat1 <- XLdat0
+  XLdat1[XLdat1[, ] == -99] <- NA
+  XLdat1$dates <- as.POSIXct(with(XLdat1,paste(DATE, TIME, sep = " ")),format="%Y-%m-%d %H:%M")
+  XLdat1 <- subset(XLdat1, format(XLdat1$dates, "%Y") %in% years)
+  XLdat1$dates <- as.POSIXct(with(XLdat1, paste(DATE, TIME, sep=" ")), format = "%Y-%m-%d %H:%M")
+  OTEMPDATES <- as.POSIXct(with(XLdat1, paste(DATE, TIME, sep=" ")), format = "%Y-%m-%d %H:%M")
+
+  # aggregate observations to daily
+  XLdat2 <- XLdat1
+  XLdat2$TIME <- as.POSIXct(XLdat1$TIME, format = "%H:%M") # to get rid of warnings, convert from char
+  XLdat1_day <- aggregate(XLdat2, by = list(format(XLdat1$DATE, "%d-%m-%Y")), FUN = mean, na.rm=TRUE, na.action=NULL)
+  XLdat1_day$Group.1 <- as.POSIXct(XLdat1_day$Group.1, format="%d-%m-%Y", tz = tzone)
+  XLdat1_day <- XLdat1_day[order(XLdat1_day$Group.1), ]
+
+  XLrain <- aggregate(XLdat1$Rainfall, by = list(as.Date(XLdat1$dates, format='%d/%m/%Y')), sum)
+  colnames(XLrain) <- c('dates', 'Rainfall')
+  XLrain$dates <- as.POSIXct(XLrain$dates)
+
+  # plot output and generate summary statistics
+  plot_moist(ncep = 1)
+  plot_moist(ncep = 0)
+
+  # soil temperature simulation
+  DEP <- as.numeric(TDEP)
+
+  #Set soil properties.
+
+  # get hydraulic properties - uses Cosby et al. 1984 pedotransfer functions and splines soil composition and bulk density to the 19 nodes.
+  soil.hydro<-pedotransfer(soilpro = as.data.frame(soilpro), DEP = DEP)
+  PE <- soil.hydro$PE
+  BB <- soil.hydro$BB
+  BD <- soil.hydro$BD
+  KS <- soil.hydro$KS
+  DD <- rep(2.6, 19)
+  # loam on top
+  PE[1:7] <- CampNormTbl9_1[4, 4]
+  BB[1:7] <- CampNormTbl9_1[4, 5]
+  KS[1:7] <- CampNormTbl9_1[4, 6]
+  BulkDensity <- BD[seq(1, 19, 2)] #soil bulk density, kg/m3
+
+  #Run the microclimate model, retrieve output and append dates.
+  if(runaust == 1){
+    #micro.aust <- micro_aust(microclima = 1, opendap = 0, runmoist = 1, soildata = 0, REFL = REFL, LAI = 0.1, ERR = ERR, loc = longlat, ystart = ystart, yfinish = yfinish, PE = PE, BB = BB, BD = BD, KS = KS, DD = DD, BulkDensity = BulkDensity, runshade = 0, rainhourly = 0, DEP = DEP, spatial = "w:/", write_input = 0)
+    micro.aust <- micro_aust(microclima = 1, opendap = 1, runmoist = 1, soildata = 0, REFL = REFL, LAI = 0.1, ERR = ERR, loc = longlat, ystart = ystart, yfinish = yfinish, PE = PE, BB = BB, BD = BD, KS = KS, DD = DD, BulkDensity = BulkDensity, runshade = 0, rainhourly = 0, DEP = DEP, spatial = "w:/", write_input = 0)
+  }
+  dstart <- paste0("01/01/",ystart)
+  dfinish <- paste0("31/12/",yfinish)
+  if(runncep == 1){
+    #micro.ncep<-micro_ncep(runshade = 1, runmoist = 1, REFL = REFL, soilgrids = 0, dem = dem, dem2 = dem, spatial = "c:/Spatial_Data/ncep/", windfac = 1, LAI = 0.1, microclima.LAI = 0, ERR = ERR, loc = longlat, dstart = dstart, dfinish = dfinish, PE = PE, BB = BB, BD = BD, KS = KS, DD = DD, BulkDensity = BulkDensity, rainhourly = 0, DEP = DEP,  write_input = 0, save = 0, slope = 0, aspect = 0)
+    micro.ncep <- micro_ncep(runshade = 1, runmoist = 1, REFL = REFL, soilgrids = 0, dem = dem, dem2 = dem, spatial = NA, windfac = 1, LAI = 0.1, microclima.LAI = 0, ERR = ERR, loc = longlat, dstart = dstart, dfinish = dfinish, PE = PE, BB = BB, BD = BD, KS = KS, DD = DD, BulkDensity = BulkDensity, rainhourly = 0, DEP = DEP,  write_input = 0, save = 0, slope = 0, aspect = 0)
+  }
+
+  # plot output and generate summary statistics
+  plot_temp(ncep = 1)
+  plot_temp(ncep = 0)
+
+}
+```
+
+## Collate and tabulate results
+
+```{r}
+source('compare.R')
+library(knitr)
+
+badtemp<-c("a14","a445","k123","k133","k14","k175","k24","k54","k73","m64","a475","k375")
+
+ncep_raw <- read.csv('output/micro_ncep_temp.csv')
+ncep_raw$soil <- 'ncep'
+
+awap <- read.csv('output/micro_aust_temp.csv')
+awap$soil <- 'awap'
+
+analysis <- compare(awap, ncep_raw, 'awap', 'ncep', badtemp)
+kable(analysis$stats, digits = 2, caption = "Summary statistics for Cosby vs Campbell and Norman, soil moisture")
+kable(analysis$ttests, digits = 4, caption = "Paired t-tests for Cosby vs Campbell and Norman, soil moisture")
+
+badmoist<-c("k1275","k1245","a445","y34")
+
+awap <- read.csv('output/micro_aust_moist.csv')
+awap$soil <- 'awap'
+
+ncep <- read.csv('output/micro_ncep_moist.csv')
+ncep$soil <- 'ncep'
+
+analysis <- compare(awap, ncep, 'awap', 'ncep', badmoist)
+kable(analysis$stats, digits = 2, caption = "Summary statistics for Cosby vs Campbell and Norman, soil moisture")
+kable(analysis$ttests, digits = 4, caption = "Paired t-tests for Cosby vs Campbell and Norman, soil moisture")
+```
+
+## References
+
+Kearney, M. R., & Maino, J. L. (2018). Can next-generation soil data products improve soil moisture modelling at the continental scale? An assessment using a new microclimate package for the R programming environment. Journal of Hydrology, 561, 662–673. doi:10.1016/j.jhydrol.2018.04.040
+
+Smith, A. B., Walker, J. P., Western, A. W., Young, R. I., Ellett, K. M., Pipunic, R. C., … Richter, H. (2012). The Murrumbidgee soil moisture monitoring network data set. Water Resources Research, 48(7), n/a-n/a. doi:10.1029/2012WR011976
