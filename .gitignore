@@ -43,4 +43,6 @@ vignettes/*.pdf
 # Shitty mac file
 .DS_Store
 
+# Ignore folder
+microclimate_info
 
